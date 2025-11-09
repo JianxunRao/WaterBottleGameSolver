@@ -1,5 +1,5 @@
 <template>
-  <div class="game-solver">
+  <div class="game-solver" ref="gameSolverRoot">
     <div class="header">
       <h1>水瓶倒水解谜求解工具</h1>
     </div>
@@ -34,6 +34,7 @@
                 :bottle="bottle"
                 :bottle-index="index"
                 :is-selected="selectedBottleIndex === index"
+                :hidden-layers="hiddenLayersMap[index] || []"
                 @layer-click="handleLayerClick"
                 @bottle-click="handleBottleClick"
               />
@@ -71,14 +72,14 @@
           
           <div class="step-navigation">
             <el-button
-              :disabled="currentStep < 0"
+              :disabled="currentStep < 0 || isAnimating"
               @click="prevStep"
             >
               上一步
             </el-button>
             <el-button
               type="primary"
-              :disabled="currentStep >= solutionSteps.length - 1"
+              :disabled="currentStep >= solutionSteps.length - 1 || isAnimating"
               @click="nextStep"
             >
               下一步
@@ -121,6 +122,21 @@
         </div>
       </div>
     </div>
+
+    <div class="pour-animation-layer">
+      <div
+        v-for="anim in animations"
+        :key="anim.id"
+        class="pour-animation-item"
+        :style="{
+          width: anim.width + 'px',
+          height: anim.height + 'px',
+          backgroundColor: anim.color,
+          transform: `translate3d(${anim.x}px, ${anim.y}px, 0)`,
+          transitionDuration: anim.duration + 'ms'
+        }"
+      ></div>
+    </div>
     
     <!-- 颜色选择器 -->
     <ColorPicker
@@ -149,6 +165,15 @@
         <el-button type="primary" @click="confirmCapacity">确定</el-button>
       </span>
     </el-dialog>
+
+    <div class="pour-animation-layer" ref="animationLayer">
+      <div
+        v-for="layer in animationLayers"
+        :key="layer.id"
+        class="pour-layer"
+        :style="getAnimationLayerStyle(layer)"
+      ></div>
+    </div>
   </div>
 </template>
 
@@ -157,7 +182,7 @@ import { mapState, mapMutations, mapActions } from 'vuex'
 import draggable from 'vuedraggable'
 import WaterBottle from '@/components/WaterBottle.vue'
 import ColorPicker from '@/components/ColorPicker.vue'
-import { solve, pourWater } from '@/utils/solver'
+import { solve } from '@/utils/solver'
 
 export default {
   name: 'GameSolver',
@@ -174,6 +199,11 @@ export default {
       initialBottles: [],
       showCapacityDialog: false,
       capacityInput: 4,
+      isAnimating: false,
+      animationLayers: [],
+      hiddenLayersMap: {},
+      animationDuration: 500,
+      animationIdCounter: 0,
       dragOptions: {
         animation: 200,
         ghostClass: 'ghost',
@@ -212,7 +242,8 @@ export default {
     this.capacityInput = this.capacity
   },
   watch: {
-    bottleCapacity() {
+    bottleCapacity(newVal) {
+      this.capacityInput = newVal
       this.initialBottles = this.bottles.map(b => [...b])
     }
   },
@@ -265,6 +296,7 @@ export default {
         cancelButtonText: '取消',
         type: 'warning'
       }).then(() => {
+        this.clearAnimationState()
         this.SET_BOTTLES([])
         this.SET_SOLUTION_STEPS([])
         this.SET_CURRENT_STEP(-1)
@@ -278,6 +310,10 @@ export default {
     },
 
     confirmCapacity() {
+      if (this.isAnimating) {
+        this.$message.warning('请等待当前动画结束后再设置层数')
+        return
+      }
       const numeric = Number(this.capacityInput)
       if (!Number.isFinite(numeric)) {
         this.$message.warning('请输入有效的数字')
@@ -295,6 +331,10 @@ export default {
     },
     
     async solvePuzzle() {
+      if (this.isAnimating) {
+        this.$message.warning('请等待当前动画结束后再求解')
+        return
+      }
       if (this.bottles.length === 0) {
         this.$message.warning('请至少添加一个瓶子')
         return
@@ -328,27 +368,31 @@ export default {
     },
     
     nextStep() {
-      if (this.currentStep < this.solutionSteps.length - 1) {
-        const nextStepIndex = this.currentStep + 1
-        const step = this.solutionSteps[nextStepIndex]
-        const capacity = this.capacity
-        
-        // 应用步骤
-        const newBottles = pourWater(
-          this.currentStep >= 0 ? this.solutionSteps[this.currentStep].bottles : this.initialBottles,
-          step.from,
-          step.to,
-          capacity
-        )
-        
-        if (newBottles) {
-          this.SET_BOTTLES(newBottles)
-          this.SET_CURRENT_STEP(nextStepIndex)
-        }
+      if (this.isAnimating) return
+      if (this.currentStep >= this.solutionSteps.length - 1) return
+
+      const nextStepIndex = this.currentStep + 1
+      const step = this.solutionSteps[nextStepIndex]
+
+      const beforeStateSource = this.currentStep >= 0
+        ? this.solutionSteps[this.currentStep].bottles
+        : this.initialBottles
+      const beforeState = beforeStateSource.map(bottle => [...bottle])
+      const afterState = step.bottles.map(bottle => [...bottle])
+
+      const animated = this.startStepAnimation(step, beforeState, afterState, () => {
+        this.SET_BOTTLES(afterState.map(bottle => [...bottle]))
+        this.SET_CURRENT_STEP(nextStepIndex)
+      })
+
+      if (!animated) {
+        this.SET_BOTTLES(afterState.map(bottle => [...bottle]))
+        this.SET_CURRENT_STEP(nextStepIndex)
       }
     },
     
     prevStep() {
+      if (this.isAnimating) return
       if (this.currentStep > 0) {
         const prevStepIndex = this.currentStep - 1
         const step = this.solutionSteps[prevStepIndex]
@@ -361,6 +405,7 @@ export default {
     },
     
     jumpToStep(stepIndex) {
+      if (this.isAnimating) return
       if (stepIndex < 0) {
         this.resetToInitial()
         return
@@ -372,8 +417,139 @@ export default {
     },
     
     resetToInitial() {
+      if (this.isAnimating) return
       this.SET_BOTTLES(this.initialBottles.map(b => [...b]))
       this.SET_CURRENT_STEP(-1)
+    },
+
+    startStepAnimation(step, beforeState, afterState, onComplete) {
+      const capacity = this.capacity
+      const fromBefore = beforeState[step.from] || []
+      const fromAfter = afterState[step.from] || []
+      const toBefore = beforeState[step.to] || []
+      const toAfter = afterState[step.to] || []
+
+      const movedFrom = []
+      for (let i = 0; i < capacity; i++) {
+        if (fromBefore[i] !== fromAfter[i] && fromAfter[i] === null && fromBefore[i] !== null) {
+          movedFrom.push(i)
+        }
+      }
+
+      const movedTo = []
+      for (let i = 0; i < capacity; i++) {
+        if (toBefore[i] !== toAfter[i] && toAfter[i] !== null) {
+          movedTo.push(i)
+        }
+      }
+
+      if (!movedFrom.length || movedFrom.length !== movedTo.length) {
+        return false
+      }
+
+      const sourceRect = this.getBottleInnerRect(step.from)
+      const targetRect = this.getBottleInnerRect(step.to)
+
+      if (!sourceRect || !targetRect) {
+        return false
+      }
+
+      const sortedFrom = [...movedFrom].sort((a, b) => b - a)
+      const sortedTo = [...movedTo].sort((a, b) => b - a)
+
+      const animations = []
+
+      sortedFrom.forEach((layerIndex, idx) => {
+        const destIndex = sortedTo[idx]
+        const color = fromBefore[layerIndex]
+        const startPos = this.computeLayerPosition(sourceRect, layerIndex)
+        const endPos = this.computeLayerPosition(targetRect, destIndex)
+
+        if (!color || !startPos || !endPos) {
+          return
+        }
+
+        animations.push({
+          id: `pour-${this.animationIdCounter++}`,
+          color,
+          startLeft: startPos.left,
+          startTop: startPos.top,
+          startWidth: startPos.width,
+          startHeight: startPos.height,
+          endWidth: endPos.width,
+          endHeight: endPos.height,
+          deltaX: endPos.left - startPos.left,
+          deltaY: endPos.top - startPos.top,
+          active: false,
+          duration: this.animationDuration
+        })
+      })
+
+      if (!animations.length) {
+        return false
+      }
+
+      this.isAnimating = true
+      this.animationLayers = animations
+      this.$set(this.hiddenLayersMap, step.from, sortedFrom)
+
+      this.$nextTick(() => {
+        requestAnimationFrame(() => {
+          this.animationLayers.forEach(layer => {
+            layer.active = true
+          })
+        })
+      })
+
+      setTimeout(() => {
+        onComplete()
+        this.clearAnimationState()
+      }, this.animationDuration + 80)
+
+      return true
+    },
+
+    getBottleInnerRect(index) {
+      const el = document.querySelector(`[data-bottle-inner="${index}"]`)
+      return el ? el.getBoundingClientRect() : null
+    },
+
+    computeLayerPosition(innerRect, layerIndex) {
+      if (!innerRect) return null
+      const capacity = this.capacity
+      if (capacity <= 0) return null
+      const layerHeight = innerRect.height / capacity
+      return {
+        left: innerRect.left,
+        top: innerRect.bottom - layerHeight * (layerIndex + 1),
+        width: innerRect.width,
+        height: layerHeight
+      }
+    },
+
+    getAnimationLayerStyle(layer) {
+      const width = layer.active ? layer.endWidth : layer.startWidth
+      const height = layer.active ? layer.endHeight : layer.startHeight
+      const translateX = layer.active ? layer.deltaX : 0
+      const translateY = layer.active ? layer.deltaY : 0
+
+      return {
+        left: `${layer.startLeft}px`,
+        top: `${layer.startTop}px`,
+        width: `${width}px`,
+        height: `${height}px`,
+        backgroundColor: layer.color,
+        transform: `translate(${translateX}px, ${translateY}px)`,
+        borderRadius: '10px',
+        boxShadow: '0 6px 12px rgba(0, 0, 0, 0.2)',
+        transition: `transform ${layer.duration}ms cubic-bezier(0.4, 0, 0.2, 1), width ${layer.duration}ms ease, height ${layer.duration}ms ease`
+      }
+    },
+
+    clearAnimationState() {
+      this.animationLayers = []
+      this.hiddenLayersMap = {}
+      this.isAnimating = false
     }
   }
 }
@@ -560,6 +736,18 @@ export default {
 
 .ghost {
   opacity: 0.5;
+}
+
+.pour-animation-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 999;
+}
+
+.pour-layer {
+  position: absolute;
+  will-change: transform, width, height;
 }
 
 @media (max-width: 768px) {

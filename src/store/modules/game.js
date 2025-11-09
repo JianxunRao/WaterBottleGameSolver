@@ -10,13 +10,11 @@ function normalizeBottleToCapacity(bottle, capacity) {
     return normalized
   }
 
-  let writeIndex = 0
-  for (let i = 0; i < bottle.length && writeIndex < capacity; i++) {
-    const layer = bottle[i]
-    if (layer !== null) {
-      normalized[writeIndex++] = layer
-    }
+  const limit = Math.min(capacity, bottle.length)
+  for (let i = 0; i < limit; i++) {
+    normalized[i] = bottle[i]
   }
+
   return normalized
 }
 

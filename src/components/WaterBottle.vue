@@ -1,16 +1,21 @@
 <template>
-  <div class="water-bottle" :class="{ 'selected': isSelected }">
-    <div class="bottle-container" @click="handleBottleClick">
+  <div class="water-bottle" :class="{ 'selected': isSelected }" ref="bottleRoot">
+    <div class="bottle-container" ref="bottleContainer" @click="handleBottleClick">
       <div class="bottle-rim"></div>
       <div class="bottle-glass">
-        <div class="bottle-inner">
+        <div class="bottle-inner" :data-bottle-inner="bottleIndex">
           <div
             v-for="layer in displayLayers"
             :key="layer.index"
             class="water-layer"
-            :class="`layer-${layer.index}`"
+            :class="[
+              `layer-${layer.index}`,
+              hiddenLayerSet.has(layer.index) ? 'layer-hidden' : null
+            ]"
             :style="getLayerStyle(layer.index)"
             @click.stop="handleLayerClick(layer.index)"
+            :data-layer-id="`bottle-${bottleIndex}-layer-${layer.index}`"
+            :ref="'layer-' + layer.index"
           >
             <div v-if="layer.color" class="water-content" :style="{ backgroundColor: layer.color }"></div>
             <div v-else class="water-empty"></div>
@@ -40,6 +45,10 @@ export default {
     isSelected: {
       type: Boolean,
       default: false
+    },
+    hiddenLayers: {
+      type: Array,
+      default: () => []
     }
   },
   computed: {
@@ -51,6 +60,22 @@ export default {
         color,
         index
       })).reverse()
+    },
+    hiddenLayerSet() {
+      return new Set(this.hiddenLayers)
+    }
+  },
+  watch: {
+    bottleIndex: {
+      immediate: true,
+      handler(newVal, oldVal) {
+        if (oldVal !== undefined) {
+          this.$emit('unregister-bottle', oldVal)
+        }
+        this.$nextTick(() => {
+          this.registerSelf(newVal)
+        })
+      }
     }
   },
   methods: {
@@ -58,6 +83,23 @@ export default {
       return {
         flex: 1
       }
+    },
+    getLayerRect(layerIndex) {
+      const ref = this.$refs['layer-' + layerIndex]
+      const el = Array.isArray(ref) ? ref[0] : ref
+      if (!el) return null
+      return el.getBoundingClientRect()
+    },
+    getBottleRect() {
+      if (!this.$refs.bottleContainer) return null
+      return this.$refs.bottleContainer.getBoundingClientRect()
+    },
+    registerSelf(index) {
+      this.$emit('register-bottle', {
+        index,
+        getLayerRect: this.getLayerRect,
+        getBottleRect: this.getBottleRect
+      })
     },
     handleLayerClick(layerIndex) {
       this.$emit('layer-click', {
@@ -68,6 +110,9 @@ export default {
     handleBottleClick() {
       this.$emit('bottle-click', this.bottleIndex)
     }
+  },
+  beforeDestroy() {
+    this.$emit('unregister-bottle', this.bottleIndex)
   }
 }
 </script>
@@ -185,6 +230,13 @@ export default {
       width: 100%;
       height: 100%;
       background: rgba(255, 255, 255, 0.06);
+    }
+
+    &.layer-hidden {
+      .water-content,
+      .water-empty {
+        opacity: 0;
+      }
     }
   }
 
