@@ -2,6 +2,12 @@
 
 一个基于 Vue 2.0 + Element UI 的水瓶倒水解谜游戏求解工具，支持移动端适配。
 
+在线地址：[http://water-bottle-game.trojx.com](http://water-bottle-game.trojx.com)
+
+相关游戏：
+- [Liquid Sort Puzzle: Water Sort](https://play.google.com/store/apps/details?id=com.TumbGames.LiquidSortPuzzle&hl=zh)
+- [倒水拼图: 颜色水排序益智游戏Water Sort](https://apps.apple.com/cn/app/%E5%80%92%E6%B0%B4%E6%8B%BC%E5%9B%BE-%E9%A2%9C%E8%89%B2%E6%B0%B4%E6%8E%92%E5%BA%8F-%E7%9B%8A%E6%99%BA%E6%B8%B8%E6%88%8F-water-sort/id6557070082)
+
 ## 功能特性
 
 - 🎮 **关卡设置**：可以添加多个瓶子，点击瓶子的每一层设置水的颜色

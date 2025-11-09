@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bottleGradient" x1="50%" x2="50%" y1="0%" y2="100%">
+      <stop offset="0%" stop-color="#7FD1FF" />
+      <stop offset="100%" stop-color="#377BFF" />
+    </linearGradient>
+    <linearGradient id="waterGradient" x1="50%" x2="50%" y1="0%" y2="100%">
+      <stop offset="0%" stop-color="#4FC3F7" />
+      <stop offset="100%" stop-color="#0288D1" />
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="26" ry="26" fill="#0f172a" />
+  <g transform="translate(39 16)">
+    <path
+      d="M20 0h10c2.209 0 4 1.791 4 4v6c0 1.105.895 2 2 2s2 .895 2 2v10.307c0 1.045.302 2.067.87 2.942l5.91 9.1A14 14 0 0 1 47 48.61v44.78C47 99.828 41.828 105 35.39 105H14.61C8.172 105 3 99.828 3 93.39V48.61a14 14 0 0 1-3.78-12.26l5.91-9.1A5.5 5.5 0 0 0 6 24.307V14c0-1.105.895-2 2-2s2-.895 2-2V4c0-2.209 1.791-4 4-4h10Z"
+      fill="url(#bottleGradient)"
+    />
+    <path
+      d="M8 59h34v22.5c0 6.351-5.149 11.5-11.5 11.5h-11C13.149 93 8 87.851 8 81.5V59Z"
+      fill="url(#waterGradient)"
+    />
+    <path
+      d="M14 32h22c1.105 0 2 .895 2 2v8c0 6.075-4.925 11-11 11h-4c-6.075 0-11-4.925-11-11v-8c0-1.105.895-2 2-2Z"
+      fill="#ffffff"
+      fill-opacity=".22"
+    />
+    <path
+      d="M29.5 17c1.933 0 3.5 1.567 3.5 3.5S31.433 24 29.5 24H23c-1.657 0-3-1.343-3-3v-.5C20 18.567 21.567 17 23.5 17h6Z"
+      fill="#ffffff"
+      fill-opacity=".18"
+    />
+  </g>
+</svg>
