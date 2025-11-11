@@ -8,12 +8,14 @@
 - [Liquid Sort Puzzle: Water Sort](https://play.google.com/store/apps/details?id=com.TumbGames.LiquidSortPuzzle&hl=zh)
 - [倒水拼图: 颜色水排序益智游戏Water Sort](https://apps.apple.com/cn/app/%E5%80%92%E6%B0%B4%E6%8B%BC%E5%9B%BE-%E9%A2%9C%E8%89%B2%E6%B0%B4%E6%8E%92%E5%BA%8F-%E7%9B%8A%E6%99%BA%E6%B8%B8%E6%88%8F-water-sort/id6557070082)
 
+![预览图](preview.png)
+
 ## 功能特性
 
 - 🎮 **关卡设置**：可以添加多个瓶子，点击瓶子的每一层设置水的颜色
 - 🎨 **颜色选择**：支持12种颜色（红、橙、黄、绿、青、蓝、紫、粉、棕、灰、黑、白）
 - 🔄 **拖拽排序**：可以拖拽瓶子调整顺序，贴近手机游戏中的布局
-- 🤖 **智能求解**：使用BFS算法自动求解最优解
+- 🤖 **智能求解**：使用A*算法自动求解最优解
 - 📱 **移动端适配**：完美适配手机屏幕
 - 📋 **步骤导航**：逐步显示求解步骤，支持前进、后退和跳转
 
