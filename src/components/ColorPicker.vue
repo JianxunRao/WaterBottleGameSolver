@@ -68,6 +68,7 @@
 </template>
 
 <script>
+import { getDefaultColors, getCustomColorStorageKey } from '@/utils/colorUtils'
 export default {
   name: 'ColorPicker',
   props: {
@@ -80,22 +81,7 @@ export default {
     return {
       visible: this.value,
       selectedColor: null,
-      defaultColors: [
-        { name: '红', value: '#FF4444' },
-        { name: '橙', value: '#DF8643' },
-        { name: '黄', value: '#FFCC44' },
-        { name: '绿', value: '#61CE7B' },
-        { name: '深绿色', value: '#008000' },
-        { name: '青色', value: '#00FFFF' },
-        { name: '天蓝色', value: '#87CEEB' },
-        { name: '蓝', value: '#3A2EBC' },
-        { name: '紫', value: '#CC44FF' },
-        { name: '粉', value: '#E05C75' },
-        { name: '棕', value: '#7B4618' },
-        { name: '灰', value: '#888888' },
-        { name: '黑', value: '#333333' },
-        { name: '白', value: '#FFFFFF' }
-      ],
+      defaultColors: getDefaultColors(),
       customColors: [],
       newColorName: '',
       newColorValue: '#409EFF',
@@ -110,7 +96,7 @@ export default {
         '#000000',
         '#FFFFFF'
       ],
-      storageKey: 'water-bottle-custom-colors'
+      storageKey: getCustomColorStorageKey()
     }
   },
   computed: {

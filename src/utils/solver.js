@@ -227,23 +227,137 @@ function pourWaterWithCapacity(bottles, fromIndex, toIndex, explicitCapacity) {
 }
 
 /**
- * 将瓶子状态转换为字符串（用于去重）
+ * 将瓶子状态转换为紧凑字符串（用于去重）
  * @param {Array} bottles - 瓶子数组
  * @returns {string}
  */
-function bottlesToKey(bottles) {
-  // 对每个瓶子进行标准化（移除null，只保留颜色）
-  // 注意：瓶子的顺序是重要的，不能排序！
-  // 因为倒水操作是基于索引的，不同顺序的瓶子状态是不同的
-  const normalized = bottles.map(bottle => {
-    const filled = bottle.filter(layer => layer !== null)
-    return filled.join(',')
-  }).join('|')
-  return normalized
+const KEY_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_'
+
+function encodeIndex(index) {
+  if (index === 0) return KEY_ALPHABET[0]
+  const base = KEY_ALPHABET.length
+  let result = ''
+  let value = index
+  while (value > 0) {
+    result = KEY_ALPHABET[value % base] + result
+    value = Math.floor(value / base)
+  }
+  return result
+}
+
+function createColorEncoder(bottles, capacity) {
+  const colorToToken = new Map()
+  let nextIndex = 0
+
+  function registerColor(color) {
+    if (colorToToken.has(color)) {
+      return colorToToken.get(color)
+    }
+    const token = encodeIndex(nextIndex++)
+    colorToToken.set(color, token)
+    return token
+  }
+
+  bottles.forEach(bottle => {
+    const normalized = normalizeBottle(bottle, capacity)
+    normalized.forEach(layer => {
+      if (layer !== null) {
+        registerColor(layer)
+      }
+    })
+  })
+
+  function bottleToKey(bottle) {
+    const normalized = normalizeBottle(bottle, capacity)
+    return normalized
+      .filter(layer => layer !== null)
+      .map(layer => registerColor(layer))
+      .join('')
+  }
+
+  function stateToKey(state) {
+    return state.map(bottle => bottleToKey(bottle)).join('|')
+  }
+
+  return {
+    bottleToKey,
+    stateToKey,
+    registerColor
+  }
 }
 
 /**
- * BFS求解
+ * 检查倒水操作是否有意义（剪枝优化）
+ * @param {number} fromIndex - 源瓶子索引
+ * @param {number} toIndex - 目标瓶子索引
+ * @param {number} lastFrom - 上一步的源瓶子索引
+ * @param {number} lastTo - 上一步的目标瓶子索引
+ * @param {Array} bottles - 当前瓶子状态
+ * @param {number} capacity - 瓶子容量
+ * @returns {boolean}
+ */
+function isMeaningfulMove(fromIndex, toIndex, lastFrom, lastTo, bottles, capacity) {
+  // 避免立即倒回：如果上一步是A->B，这一步是B->A，则无意义
+  if (lastFrom !== undefined && lastTo !== undefined) {
+    if (fromIndex === lastTo && toIndex === lastFrom) {
+      return false
+    }
+  }
+
+  const fromBottle = bottles[fromIndex]
+  const toBottle = bottles[toIndex]
+
+  // 剪枝1: 源瓶为空
+  const fromTop = getTopLayers(fromBottle)
+  if (fromTop.count === 0) return false
+
+  // 剪枝2: 目标瓶已满
+  const toEmptySpace = getEmptySpace(toBottle)
+  if (toEmptySpace === 0) return false
+
+  // 剪枝3: 相同颜色但无法填满目标瓶
+  const toTop = getTopLayers(toBottle)
+  if (fromTop.color === toTop.color) {
+    const spaceNeeded = capacity - toTop.count
+    if (fromTop.count > spaceNeeded) return false
+  }
+
+  return true
+}
+
+/**
+ * 计算操作的优先级（启发式函数，用于优化搜索顺序）
+ * @param {Array} fromBottle - 源瓶子
+ * @param {Array} toBottle - 目标瓶子
+ * @param {number} capacity - 瓶子容量
+ * @returns {number} 优先级分数，越高越优先
+ */
+function getMovePriority(fromBottle, toBottle, capacity) {
+  const fromTop = getTopLayers(fromBottle)
+  const toTop = getTopLayers(toBottle)
+  const toEmptySpace = getEmptySpace(toBottle)
+
+  // 最高优先级：能填满目标瓶子的操作（完成一个瓶子）
+  if (fromTop.color === toTop.color && fromTop.count + toTop.count >= capacity) {
+    return 100
+  }
+
+  // 高优先级：相同颜色但不能填满
+  if (fromTop.color === toTop.color) {
+    return 50
+  }
+
+  // 中等优先级：倒入空瓶
+  if (toTop.color === null) {
+    return 25
+  }
+
+  // 低优先级：不同颜色操作
+  return 0
+}
+
+/**
+ * 使用A*搜索求解
  * @param {Array} initialBottles - 初始瓶子状态
  * @returns {Array|null} 求解步骤，如果无解返回null
  */
@@ -253,59 +367,188 @@ export function solve(initialBottles) {
     return null
   }
 
-  const initialState = normalizeBottles(initialBottles, capacity)
+  const colorEncoder = createColorEncoder(initialBottles, capacity)
+  const { state: initialState, sortedToOriginal: initialMapping } = normalizeAndSortBottles(initialBottles, capacity, null, colorEncoder)
+  const initialKey = colorEncoder.stateToKey(initialState)
 
-  const queue = [{
-    bottles: initialState,
-    steps: [],
-    depth: 0
+  const openSet = [{
+    state: initialState,
+    key: initialKey,
+    g: 0,
+    h: heuristic(initialState, capacity),
+    move: null, // 用于剪枝的排序后索引
+    displayMove: null, // 原始索引用于展示
+    parentKey: null,
+    sortedToOriginal: initialMapping,
+    priority: 0
   }]
-  
-  const visited = new Set()
-  visited.add(bottlesToKey(initialState))
-  
-  const maxDepth = 50 // 限制最大深度，避免无限搜索
-  
-  while (queue.length > 0) {
-    const current = queue.shift()
-    
-    if (current.depth > maxDepth) {
-      continue
+
+  const gScore = new Map([[initialKey, 0]])
+  const nodeMap = new Map([[initialKey, openSet[0]]])
+  const closedSet = new Set()
+
+  const maxStates = 200000
+
+  while (openSet.length > 0) {
+    openSet.sort((a, b) => {
+      const fa = a.g + a.h
+      const fb = b.g + b.h
+      if (fa === fb) {
+        return (b.priority ?? 0) - (a.priority ?? 0)
+      }
+      return fa - fb
+    })
+
+    const current = openSet.shift()
+    closedSet.add(current.key)
+
+    if (closedSet.size > maxStates) {
+      console.warn(`超过最大状态数限制 (${maxStates})，终止搜索`)
+      return null
     }
-    
-    // 检查是否获胜
-    if (isWin(current.bottles)) {
-      return current.steps
+
+    if (isWin(current.state)) {
+      return reconstructPath(nodeMap, current.key, capacity)
     }
-    
-    // 尝试所有可能的倒水操作
-    for (let fromIndex = 0; fromIndex < current.bottles.length; fromIndex++) {
-      for (let toIndex = 0; toIndex < current.bottles.length; toIndex++) {
+
+    for (let fromIndex = 0; fromIndex < current.state.length; fromIndex++) {
+      for (let toIndex = 0; toIndex < current.state.length; toIndex++) {
         if (fromIndex === toIndex) continue
-        
-        const newBottles = pourWaterWithCapacity(current.bottles, fromIndex, toIndex, capacity)
-        if (!newBottles) continue
-        
-        const key = bottlesToKey(newBottles)
-        if (visited.has(key)) continue
-        
-        visited.add(key)
-        
-        const newSteps = [...current.steps, {
-          from: fromIndex,
-          to: toIndex,
-          bottles: newBottles.map(b => [...b])
-        }]
-        
-        queue.push({
-          bottles: newBottles,
-          steps: newSteps,
-          depth: current.depth + 1
-        })
+
+        if (current.move && !isMeaningfulMove(fromIndex, toIndex, current.move.from, current.move.to, current.state, capacity)) {
+          continue
+        }
+
+        const pouredState = pourWaterWithCapacity(current.state, fromIndex, toIndex, capacity)
+        if (!pouredState) continue
+
+        const { state: newState, sortedToOriginal: newMapping } = normalizeAndSortBottles(pouredState, capacity, current.sortedToOriginal, colorEncoder)
+        const newKey = colorEncoder.stateToKey(newState)
+
+        const tentativeG = current.g + 1
+        if (closedSet.has(newKey) && tentativeG >= (gScore.get(newKey) ?? Number.POSITIVE_INFINITY)) {
+          continue
+        }
+
+        if (tentativeG >= (gScore.get(newKey) ?? Number.POSITIVE_INFINITY)) {
+          continue
+        }
+
+        const priority = getMovePriority(current.state[fromIndex], current.state[toIndex], capacity)
+        const displayMove = {
+          from: current.sortedToOriginal[fromIndex],
+          to: current.sortedToOriginal[toIndex]
+        }
+        gScore.set(newKey, tentativeG)
+
+        const existing = openSet.find(node => node.key === newKey)
+        if (existing) {
+          existing.g = tentativeG
+          existing.h = heuristic(newState, capacity)
+          existing.move = { from: fromIndex, to: toIndex }
+          existing.displayMove = displayMove
+          existing.priority = priority
+          existing.state = newState
+          existing.parentKey = current.key
+          existing.sortedToOriginal = newMapping
+          nodeMap.set(newKey, existing)
+        } else {
+          const newNode = {
+            state: newState,
+            key: newKey,
+            g: tentativeG,
+            h: heuristic(newState, capacity),
+            move: { from: fromIndex, to: toIndex },
+            displayMove,
+            priority,
+            parentKey: current.key,
+            sortedToOriginal: newMapping
+          }
+          openSet.push(newNode)
+          nodeMap.set(newKey, newNode)
+        }
       }
     }
   }
-  
-  return null // 无解
+
+  return null
+}
+
+function reconstructPath(nodeMap, currentKey, capacity) {
+  const steps = []
+  let node = nodeMap.get(currentKey)
+
+  while (node && node.displayMove) {
+    const restored = restoreOriginalOrder(node.state, node.sortedToOriginal, capacity)
+    steps.unshift({
+      from: node.displayMove.from,
+      to: node.displayMove.to,
+      bottles: restored.map(b => [...b])
+    })
+    node = nodeMap.get(node.parentKey)
+  }
+
+  return steps
+}
+
+function heuristic(state, capacity) {
+  let unmatchedLayers = 0
+
+  state.forEach(bottle => {
+    const normalized = normalizeBottle(bottle, capacity)
+    const filled = normalized.filter(layer => layer !== null)
+    if (filled.length === 0) return
+
+    const topColor = filled[filled.length - 1]
+    filled.forEach(layer => {
+      if (layer !== topColor) {
+        unmatchedLayers += 1
+      }
+    })
+  })
+
+  return Math.ceil(unmatchedLayers / Math.max(1, capacity))
+}
+
+function normalizeAndSortBottles(bottles, capacity, indexMap, colorEncoder) {
+  const items = bottles.map((bottle, idx) => {
+    const normalized = normalizeBottle(bottle, capacity)
+    const filled = normalized.filter(layer => layer !== null)
+
+    let category = 0 // 未完成
+    if (filled.length === 0) {
+      category = 2 // 空瓶
+    } else if (filled.length === capacity && filled.every(layer => layer === filled[0])) {
+      category = 1 // 已完成
+    }
+
+    return {
+      normalized,
+      category,
+      key: colorEncoder.bottleToKey(normalized),
+      originalIndex: indexMap ? indexMap[idx] : idx
+    }
+  })
+
+  items.sort((a, b) => {
+    if (a.category !== b.category) {
+      return a.category - b.category
+    }
+    return a.key.localeCompare(b.key)
+  })
+
+  return {
+    state: items.map(item => item.normalized),
+    sortedToOriginal: items.map(item => item.originalIndex)
+  }
+}
+
+function restoreOriginalOrder(state, sortedToOriginal, capacity) {
+  const restored = Array(state.length)
+  state.forEach((bottle, idx) => {
+    const originalIndex = sortedToOriginal[idx]
+    restored[originalIndex] = normalizeBottle(bottle, capacity)
+  })
+  return restored
 }
 

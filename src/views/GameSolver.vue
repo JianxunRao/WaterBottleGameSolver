@@ -123,21 +123,6 @@
       </div>
     </div>
 
-    <div class="pour-animation-layer">
-      <div
-        v-for="anim in animations"
-        :key="anim.id"
-        class="pour-animation-item"
-        :style="{
-          width: anim.width + 'px',
-          height: anim.height + 'px',
-          backgroundColor: anim.color,
-          transform: `translate3d(${anim.x}px, ${anim.y}px, 0)`,
-          transitionDuration: anim.duration + 'ms'
-        }"
-      ></div>
-    </div>
-    
     <!-- 颜色选择器 -->
     <ColorPicker
       ref="colorPicker"
@@ -183,6 +168,7 @@ import draggable from 'vuedraggable'
 import WaterBottle from '@/components/WaterBottle.vue'
 import ColorPicker from '@/components/ColorPicker.vue'
 import { solve } from '@/utils/solver'
+import { getColorName } from '@/utils/colorUtils'
 
 export default {
   name: 'GameSolver',
@@ -342,6 +328,7 @@ export default {
       
       // 保存初始状态
       this.initialBottles = this.bottles.map(b => [...b])
+      this.logCurrentPuzzle(this.initialBottles, this.capacity)
       
       this.SET_IS_SOLVING(true)
       
@@ -550,6 +537,18 @@ export default {
       this.animationLayers = []
       this.hiddenLayersMap = {}
       this.isAnimating = false
+    },
+
+    logCurrentPuzzle(bottles, capacity) {
+      console.log('当前关卡瓶子状态（从瓶口到瓶底）：')
+      bottles.forEach((bottle, index) => {
+        const layers = []
+        for (let i = capacity - 1; i >= 0; i--) {
+          const color = bottle[i]
+          layers.push(getColorName(color))
+        }
+        console.log(`瓶子 ${index + 1}: [${layers.join(', ')}]`)
+      })
     }
   }
 }

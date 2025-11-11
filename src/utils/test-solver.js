@@ -1,10 +1,12 @@
-// 测试求解算法 - Node.js版本
-// 使用CommonJS格式，因为Node.js可能不支持ES6模块
+// 测试求解算法 - 引用 solver.js 中的算法
+// 使用 ES6 模块导入
 
-// 复制solver.js中的函数（因为Node.js环境）
+import { solve as solveAlgorithm, pourWater, isWin, canPour } from './solver.js'
+
 const DEFAULT_CAPACITY = 4
 const MAX_SEARCH_DEPTH = 200
 
+// 测试辅助函数（这些函数在solver.js中是内部函数，测试需要单独定义）
 function detectCapacity(...bottles) {
   for (const bottle of bottles) {
     if (Array.isArray(bottle) && bottle.length > 0) {
@@ -16,18 +18,6 @@ function detectCapacity(...bottles) {
 
 function createEmptyBottle(capacity) {
   return Array.from({ length: capacity }, () => null)
-}
-
-// 检查是否获胜
-function isWin(bottles) {
-  return bottles.every(bottle => {
-    const capacity = Array.isArray(bottle) ? bottle.length : DEFAULT_CAPACITY
-    const normalized = normalizeBottle(bottle, capacity)
-    const filledLayers = normalized.filter(layer => layer !== null)
-    if (filledLayers.length === 0) return true // 空瓶
-    if (filledLayers.length !== capacity) return false // 未满
-    return filledLayers.every(color => color === filledLayers[0]) // 全部相同颜色
-  })
 }
 
 function normalizeBottle(bottle, capacity) {
@@ -98,199 +88,21 @@ function getEmptySpace(bottle) {
   return bottle.reduce((count, layer) => (layer === null ? count + 1 : count), 0)
 }
 
-// 检查是否可以倒水
-function canPour(fromBottle, toBottle) {
-  const fromTop = getTopLayers(fromBottle)
-  const toTopColor = getTopColor(toBottle)
-  const toEmptySpace = getEmptySpace(toBottle)
-  
-  // 源瓶子为空
-  if (fromTop.count === 0) {
-    return null
-  }
-  
-  // 目标瓶子为空，可以倒入任意层数的同一种颜色
-  if (toTopColor === null) {
-    const pourCount = Math.min(fromTop.count, toEmptySpace)
-    if (pourCount === 0) {
-      return null
-    }
-    
-    const startIndex = fromTop.topIndex - pourCount + 1
-    return {
-      fromIndex: startIndex,
-      count: pourCount
-    }
-  }
-  
-  // 目标瓶子不为空，需要颜色相同
-  if (fromTop.color !== toTopColor) {
-    return null
-  }
-  
-  // 颜色相同，检查空间
-  const canPourCount = Math.min(fromTop.count, toEmptySpace)
-  if (canPourCount === 0) {
-    return null
-  }
-  
-  return {
-    fromIndex: fromTop.topIndex - canPourCount + 1,
-    count: canPourCount
-  }
-}
-
-// 执行倒水操作
-function pourWater(bottles, fromIndex, toIndex, capacity) {
-  return pourWaterWithCapacity(bottles, fromIndex, toIndex, capacity)
-}
-
-function pourWaterWithCapacity(bottles, fromIndex, toIndex, explicitCapacity) {
-  if (fromIndex === toIndex) return null
-
-  const capacity = explicitCapacity ?? detectCapacity(bottles[fromIndex], bottles[toIndex], bottles[0])
-  if (capacity <= 0) return null
-
-  const fromBottle = normalizeBottle(bottles[fromIndex], capacity)
-  const toBottle = normalizeBottle(bottles[toIndex], capacity)
-  
-  const pourInfo = canPour(fromBottle, toBottle)
-  if (!pourInfo) return null
-  
-  const { fromIndex: layerStart, count } = pourInfo
-  const color = fromBottle[layerStart + count - 1]
-  
-  // 从源瓶子移除水
-  for (let i = layerStart; i < layerStart + count; i++) {
-    fromBottle[i] = null
-  }
-  
-  // 向目标瓶子添加水
-  let addedCount = 0
-  
-  // 如果目标瓶子顶部有相同颜色的水，从顶部往下填充（融合）
-  // 否则从底部开始填充
-  const topColor = getTopColor(toBottle)
-  if (topColor === color && topColor !== null) {
-    // 从顶部往下找空位填充（与顶部相同颜色的水融合）
-    for (let i = capacity - 1; i >= 0 && addedCount < count; i--) {
-      if (toBottle[i] === null) {
-        toBottle[i] = color
-        addedCount++
-      }
-    }
-  } else {
-    // 从底部开始填充
-    for (let i = 0; i < capacity && addedCount < count; i++) {
-      if (toBottle[i] === null) {
-        toBottle[i] = color
-        addedCount++
-      }
-    }
-  }
-  
-  const updatedFrom = normalizeBottle(fromBottle, capacity)
-  const updatedTo = normalizeBottle(toBottle, capacity)
-  
-  // 创建新的瓶子数组
-  const newBottles = bottles.map((bottle, index) => {
-    if (index === fromIndex) return updatedFrom
-    if (index === toIndex) return updatedTo
-    return normalizeBottle(bottle, capacity)
-  })
-  
-  return newBottles
-}
-
-// 将瓶子状态转换为字符串（用于去重）
-function bottlesToKey(bottles) {
-  // 对每个瓶子进行标准化（移除null，只保留颜色）
-  // 注意：瓶子的顺序是重要的，不能排序！
-  // 因为倒水操作是基于索引的，不同顺序的瓶子状态是不同的
-  const normalized = bottles.map(bottle => {
-    const filled = bottle.filter(layer => layer !== null)
-    return filled.join(',')
-  }).join('|')
-  return normalized
-}
-
-// BFS求解
+// 包装solve函数，添加调试输出
 function solve(initialBottles) {
-  const capacity = detectCapacity(...initialBottles)
-  if (capacity <= 0) {
-    console.log('初始容量无效，无法求解')
+  const startTime = Date.now()
+  console.log('开始求解...')
+  
+  const steps = solveAlgorithm(initialBottles)
+  const endTime = Date.now()
+  
+  if (steps === null) {
+    console.log('求解失败：无法找到解')
     return null
   }
-
-  const initialState = normalizeBottles(initialBottles, capacity)
   
-  const queue = [{
-    bottles: initialState,
-    steps: [],
-    depth: 0
-  }]
-  
-  const visited = new Set()
-  visited.add(bottlesToKey(initialState))
-  
-  const maxDepth = MAX_SEARCH_DEPTH // 限制最大深度，避免无限搜索
-  let maxQueueSize = 0
-  let totalStates = 0
-  
-  while (queue.length > 0) {
-    const current = queue.shift()
-    
-    if (current.depth > maxDepth) {
-      continue
-    }
-    
-    // 检查是否获胜
-    if (isWin(current.bottles)) {
-      console.log(`\n求解成功！搜索了${totalStates}个状态，最大队列长度${maxQueueSize}`)
-      return current.steps
-    }
-    
-    // 尝试所有可能的倒水操作
-    for (let fromIndex = 0; fromIndex < current.bottles.length; fromIndex++) {
-      for (let toIndex = 0; toIndex < current.bottles.length; toIndex++) {
-        if (fromIndex === toIndex) continue
-        
-        const newBottles = pourWaterWithCapacity(current.bottles, fromIndex, toIndex, capacity)
-        if (!newBottles) continue
-        
-        const key = bottlesToKey(newBottles)
-        if (visited.has(key)) continue
-        
-        visited.add(key)
-        totalStates++
-        
-        const newSteps = [...current.steps, {
-          from: fromIndex,
-          to: toIndex,
-          bottles: newBottles.map(b => [...b])
-        }]
-        
-        queue.push({
-          bottles: newBottles,
-          steps: newSteps,
-          depth: current.depth + 1
-        })
-        
-        if (queue.length > maxQueueSize) {
-          maxQueueSize = queue.length
-        }
-      }
-    }
-    
-    // 每1000个状态输出一次进度
-    if (totalStates % 1000 === 0) {
-      console.log(`已搜索${totalStates}个状态，当前深度${current.depth}，队列长度${queue.length}`)
-    }
-  }
-  
-  console.log(`\n搜索完成，共搜索${totalStates}个状态，最大队列长度${maxQueueSize}`)
-  
-  return null // 无解
+  console.log(`\n求解成功！共 ${steps.length} 步，耗时 ${endTime - startTime}ms`)
+  return steps
 }
 
 // 颜色映射（根据ColorPicker中的颜色定义）
@@ -301,7 +113,11 @@ const COLORS = {
   粉: '#FF44CC',
   绿: '#44FF44',
   棕: '#CC8844',
-  蓝: '#4444FF'
+  蓝: '#4444FF',
+  黄: '#FFCC44',
+  紫: '#8A2BE2',
+  灰: '#888888',
+  红: '#FF4444'
 }
 
 /**
@@ -309,15 +125,31 @@ const COLORS = {
  * @param {Array} layers - 从上到下的颜色数组，如 ['橙', '粉', '绿', '棕']
  * @returns {Array} 瓶子数组，底层到顶层 [底层, 次底层, 次顶层, 顶层]
  */
-function createBottle(layers, capacity = TEST_CAPACITY) {
+function createBottle(layers, colorMap = COLORS, capacity = TEST_CAPACITY) {
   // 用户输入是从上到下，需要转换为从下到上（数组索引0是底层）
   const bottle = createEmptyBottle(capacity)
   for (let i = 0; i < layers.length && i < capacity; i++) {
-    const color = COLORS[layers[i]]
+    const color = colorMap[layers[i]]
     if (color) {
       const targetIndex = capacity - 1 - i
       bottle[targetIndex] = color // 顶层在索引capacity-1，底层在索引0
     }
+  }
+  return bottle
+}
+
+function createBottleFromTop(layers, capacity = TEST_CAPACITY) {
+  const bottle = createEmptyBottle(capacity)
+  if (!Array.isArray(layers)) {
+    return bottle
+  }
+  for (let i = 0; i < layers.length && i < capacity; i++) {
+    const layer = layers[i]
+    if (!layer || layer === '空') {
+      continue
+    }
+    const targetIndex = capacity - 1 - i
+    bottle[targetIndex] = layer
   }
   return bottle
 }
@@ -457,8 +289,156 @@ function testCase1() {
 }
 
 /**
+ * 测试用例2：复杂关卡
+ */
+function testCase2() {
+  console.log('\n========== 测试用例2 ==========')
+  console.log('复杂初始状态（从上到下）：')
+  console.log('1号瓶：粉、蓝、粉、绿')
+  console.log('2号瓶：粉、橙、黄、绿')
+  console.log('3号瓶：黄、橙、紫、红')
+  console.log('4号瓶：橙、黄、灰、紫')
+  console.log('5号瓶：绿、灰、灰、蓝')
+  console.log('6号瓶：紫、橙、灰、紫')
+  console.log('7号瓶：粉、红、蓝、绿')
+  console.log('8号瓶：红、红、黄、蓝')
+  console.log('9号瓶：空')
+  console.log('10号瓶：空')
+
+  const bottles = [
+    createBottle(['粉', '蓝', '粉', '绿'], COLORS),
+    createBottle(['粉', '橙', '黄', '绿'], COLORS),
+    createBottle(['黄', '橙', '紫', '红'], COLORS),
+    createBottle(['橙', '黄', '灰', '紫'], COLORS),
+    createBottle(['绿', '灰', '灰', '蓝'], COLORS),
+    createBottle(['紫', '橙', '灰', '紫'], COLORS),
+    createBottle(['粉', '红', '蓝', '绿'], COLORS),
+    createBottle(['红', '红', '黄', '蓝'], COLORS),
+    createEmptyBottle(TEST_CAPACITY),
+    createEmptyBottle(TEST_CAPACITY)
+  ]
+
+  printBottles(bottles, '初始状态')
+
+  const startTime = Date.now()
+  const steps = solve(bottles)
+  const endTime = Date.now()
+
+  if (!steps) {
+    console.log('❌ 求解失败：无法找到解')
+    return false
+  }
+
+  console.log('\n✅ 求解成功！')
+  console.log(`总步数: ${steps.length}`)
+  console.log(`耗时: ${endTime - startTime}ms`)
+
+  console.log('\n求解步骤：')
+  let currentBottles = bottles.map(b => [...b])
+
+  steps.forEach((step, index) => {
+    console.log(`\n步骤 ${index + 1}: 从瓶子 ${step.from + 1} 倒入瓶子 ${step.to + 1}`)
+
+    const pourResult = pourWater(currentBottles, step.from, step.to)
+    if (!pourResult) {
+      console.log('  ❌ 错误：这一步操作不合法！')
+      return
+    }
+
+    const matches = JSON.stringify(pourResult) === JSON.stringify(step.bottles)
+    if (!matches) {
+      console.log('  ⚠️  警告：倒水结果与步骤中保存的状态不匹配')
+    }
+
+    currentBottles = step.bottles.map(b => [...b])
+    printBottles(currentBottles, `步骤 ${index + 1} 后`)
+  })
+
+  console.log('\n验证最终状态：')
+  const finalBottles = steps.length > 0 ? steps[steps.length - 1].bottles : bottles
+  const isWinResult = isWin(finalBottles)
+  console.log('是否获胜:', isWinResult ? '✅ 是' : '❌ 否')
+
+  if (!isWinResult) {
+    printBottles(finalBottles, '最终状态（未获胜）')
+  } else {
+    printBottles(finalBottles, '最终状态（获胜）')
+  }
+
+  return isWinResult
+}
+
+/**
  * 测试倒水逻辑
  */
+function testCase3() {
+  console.log('\n========== 测试用例3 ==========')
+  const bottleLayersTop = [
+    ['#1F6230', '#FFCC44', '#7B4618', '#7B4618'],
+    ['#1F6230', '#7B4618', '#FFCC44', '#74921C'],
+    ['#FF4444', '#FFCC44', '#FF4444', '#3A2EBC'],
+    ['#5FCF78', '#3A2EBC', '#5FCF78', '#5FCF78'],
+    ['#5FCF78', '#87CEEB', '#74921C', '#DF8643'],
+    ['#FF4444', '#1F6230', '#FF4444', '#87CEEB'],
+    ['#87CEEB', '#1F6230', '#74921C', '#7B4618'],
+    ['#DF8643', '#FFCC44', '#3A2EBC', '#74921C'],
+    ['#87CEEB', '#DF8643', '#DF8643', '#3A2EBC'],
+    ['空', '空', '空', '空'],
+    ['空', '空', '空', '空']
+  ]
+
+  const bottles = bottleLayersTop.map(layers => createBottleFromTop(layers, TEST_CAPACITY))
+
+  printBottles(bottles, '初始状态')
+
+  const startTime = Date.now()
+  const steps = solve(bottles)
+  const endTime = Date.now()
+
+  if (!steps) {
+    console.log('❌ 求解失败：无法找到解')
+    return false
+  }
+
+  console.log('\n✅ 求解成功！')
+  console.log(`总步数: ${steps.length}`)
+  console.log(`耗时: ${endTime - startTime}ms`)
+
+  console.log('\n求解步骤：')
+  let currentBottles = bottles.map(b => [...b])
+
+  steps.forEach((step, index) => {
+    console.log(`\n步骤 ${index + 1}: 从瓶子 ${step.from + 1} 倒入瓶子 ${step.to + 1}`)
+
+    const pourResult = pourWater(currentBottles, step.from, step.to)
+    if (!pourResult) {
+      console.log('  ❌ 错误：这一步操作不合法！')
+      return
+    }
+
+    const matches = JSON.stringify(pourResult) === JSON.stringify(step.bottles)
+    if (!matches) {
+      console.log('  ⚠️  警告：倒水结果与步骤中保存的状态不匹配')
+    }
+
+    currentBottles = step.bottles.map(b => [...b])
+    printBottles(currentBottles, `步骤 ${index + 1} 后`)
+  })
+
+  console.log('\n验证最终状态：')
+  const finalBottles = steps.length > 0 ? steps[steps.length - 1].bottles : bottles
+  const isWinResult = isWin(finalBottles)
+  console.log('是否获胜:', isWinResult ? '✅ 是' : '❌ 否')
+
+  if (!isWinResult) {
+    printBottles(finalBottles, '最终状态（未获胜）')
+  } else {
+    printBottles(finalBottles, '最终状态（获胜）')
+  }
+
+  return isWinResult
+}
+
 function testPourLogic() {
   console.log('\n========== 测试倒水逻辑 ==========')
   
@@ -579,7 +559,11 @@ console.log('开始运行测试...\n')
 testPourLogic()
 testWinCondition()
 const test1Result = testCase1()
+const test2Result = testCase2()
+const test3Result = testCase3()
 
 console.log('\n========== 测试总结 ==========')
 console.log('测试用例1结果:', test1Result ? '✅ 通过' : '❌ 失败')
+console.log('测试用例2结果:', test2Result ? '✅ 通过' : '❌ 失败')
+console.log('测试用例3结果:', test3Result ? '✅ 通过' : '❌ 失败')
 
